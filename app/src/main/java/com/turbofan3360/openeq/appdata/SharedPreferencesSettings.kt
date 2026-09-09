@@ -33,6 +33,22 @@ class SharedPreferencesSettings(
         }
     }
 
+    fun getAppSettingInt(
+        key: String,
+        default: Int
+    ): Int {
+        return sharedPref.getInt(key, default)
+    }
+
+    fun appSaveInt(
+        key: String,
+        value: Int
+    ) {
+        sharedPref.edit {
+            putInt(key, value)
+        }
+    }
+
     fun appDeleteBoolean(
         key: String
     ) {

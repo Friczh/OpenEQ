@@ -37,10 +37,14 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LargeFloatingActionButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -84,6 +88,9 @@ fun MainScreen(
     updateEqLevel: (Int, Float) -> Unit,
     frequencyBands: List<String>,
     eqRange: List<Float>,
+
+    bassBoostStrength: Int,
+    updateBassBoost: (Int) -> Unit,
 
     onPresetSelect: (String) -> Unit,
     onPresetSave: (String) -> Unit,
@@ -135,32 +142,90 @@ fun MainScreen(
         // Defining content: Draws a colored background that fills the page
         // Then draws the EQ Sliders on it, and then a curve between the EQ sliders
     ) { innerPadding ->
-        BoxWithConstraints(
+        // Which tab is currently selected - 0 = Equalizer, 1 = Bass Boost
+        var selectedTab by remember { mutableIntStateOf(0) }
+
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .background(color = MaterialTheme.colorScheme.background)
                 .padding(paddingValues = innerPadding),
         ) {
-            // Grabbing scope (i.e. box size) parameters
-            val scope = this
+            TabRow(selectedTabIndex = selectedTab) {
+                Tab(
+                    selected = selectedTab == 0,
+                    onClick = { selectedTab = 0 },
+                    text = { Text(stringResource(R.string.tab_equalizer)) }
+                )
+                Tab(
+                    selected = selectedTab == 1,
+                    onClick = { selectedTab = 1 },
+                    text = { Text(stringResource(R.string.tab_bass_boost)) }
+                )
+            }
 
-            val topPadding = with(LocalDensity.current) { innerPadding.calculateTopPadding().toPx() }
-            val sidePadding =
-                with(LocalDensity.current) { innerPadding.calculateLeftPadding(LayoutDirection.Ltr).toPx() }
+            when (selectedTab) {
+                0 -> BoxWithConstraints(
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    // Grabbing scope (i.e. box size) parameters
+                    val scope = this
 
-            EQSliders(
-                listOf(scope.maxWidth, scope.maxHeight),
-                isPortrait,
-                frequencyBands,
-                eqRange,
-                eqLevels,
-                updateEqLevel,
-                thumbPositions
-            )
+                    val topPadding = with(LocalDensity.current) { innerPadding.calculateTopPadding().toPx() }
+                    val sidePadding = with(LocalDensity.current) {
+                        innerPadding.calculateLeftPadding(LayoutDirection.Ltr).toPx()
+                    }
 
-            // Drawing the curve on top of the EQ sliders
-            EQCurve(MaterialTheme.colorScheme.primary, thumbPositions, topPadding, sidePadding)
+                    EQSliders(
+                        listOf(scope.maxWidth, scope.maxHeight),
+                        isPortrait,
+                        frequencyBands,
+                        eqRange,
+                        eqLevels,
+                        updateEqLevel,
+                        thumbPositions
+                    )
+
+                    // Drawing the curve on top of the EQ sliders
+                    EQCurve(MaterialTheme.colorScheme.primary, thumbPositions, topPadding, sidePadding)
+                }
+
+                1 -> BassBoostTab(bassBoostStrength, updateBassBoost)
+            }
         }
+    }
+}
+
+@Composable
+private fun BassBoostTab(
+    bassBoostStrength: Int,
+    updateBassBoost: (Int) -> Unit
+) {
+    // Simple screen with a single slider controlling bass boost strength (0-1000),
+    // matching the platform android.media.audiofx.BassBoost effect's range
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(24.dp),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(
+            text = "${(bassBoostStrength / 10)}%",
+            style = MaterialTheme.typography.headlineMedium,
+            color = MaterialTheme.colorScheme.primary
+        )
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        Slider(
+            value = bassBoostStrength.toFloat(),
+            onValueChange = { value -> updateBassBoost(value.toInt()) },
+            valueRange = 0f..1000f,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp)
+        )
     }
 }
 

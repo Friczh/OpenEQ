@@ -2,13 +2,22 @@ package com.turbofan3360.openeq.audioprocessing
 
 import android.content.Context
 import android.media.AudioManager
+import android.media.audiofx.BassBoost
 import android.media.audiofx.Equalizer
+import android.media.audiofx.LoudnessEnhancer
 import kotlin.math.min
 import kotlin.math.round
 
 private const val DECIBEL_TO_MILLIBEL = 100f
 private const val HERZ_TO_MILLIHERZ = 1000f
 private const val ONE_MEGAHERZ = 1000 // in Hz
+
+// Some devices' audio effects framework reserves headroom (roughly -3dB, i.e. ~30% of
+// perceived volume) as soon as an Equalizer effect is instantiated on a session/mix -
+// even if every band is left at 0dB. A LoudnessEnhancer with a fixed makeup gain applied
+// alongside the Equalizer compensates for that loss so enabling the EQ doesn't quietly
+// turn the volume down. See EqForegroundService for where this is used.
+const val EQ_MAKEUP_GAIN_MILLIBEL = 300 // +3dB
 
 // A series of utility functions to help the code manage equalizer instances
 
@@ -86,6 +95,58 @@ fun eqFrequenciesToLabels(
     }
 
     return labels.toList()
+}
+
+// ---------------------------------------------------------
+// Loudness compensation - fixes the volume drop caused by
+// attaching an Equalizer effect to a session (see comment above)
+// ---------------------------------------------------------
+
+fun addLoudnessCompensation(audioSession: Int): LoudnessEnhancer {
+    // Adds a makeup-gain LoudnessEnhancer to a session to counteract the headroom the
+    // Equalizer effect reserves on that session
+    val loudnessObject = LoudnessEnhancer(audioSession)
+    loudnessObject.setTargetGain(EQ_MAKEUP_GAIN_MILLIBEL)
+    loudnessObject.setEnabled(true)
+
+    return loudnessObject
+}
+
+fun delLoudnessCompensation(loudness: LoudnessEnhancer) {
+    loudness.release()
+}
+
+// ---------------------------------------------------------
+// Bass boost - ported from ArchiveTune's equalizer module
+// (moe.rukamori.archivetune.playback.MusicService), which wraps
+// the platform's android.media.audiofx.BassBoost effect.
+// Strength is 0-1000 as defined by the Android AudioEffect API.
+// ---------------------------------------------------------
+
+const val BASS_BOOST_MIN_STRENGTH: Short = 0
+const val BASS_BOOST_MAX_STRENGTH: Short = 1000
+
+fun addBassBoost(audioSession: Int): BassBoost {
+    // Adds a bass boost effect to the given audio session
+    val bassBoostObject = BassBoost(0, audioSession)
+    bassBoostObject.setEnabled(false)
+
+    return bassBoostObject
+}
+
+fun delBassBoost(bassBoost: BassBoost) {
+    bassBoost.release()
+}
+
+fun setBassBoost(bassBoost: BassBoost, strength: Short) {
+    // Strength of 0 effectively means "off", to match the behaviour of the EQ bands
+    val clampedStrength = strength.coerceIn(BASS_BOOST_MIN_STRENGTH, BASS_BOOST_MAX_STRENGTH)
+
+    bassBoost.setEnabled(clampedStrength > BASS_BOOST_MIN_STRENGTH)
+
+    if (bassBoost.strengthSupported) {
+        bassBoost.setStrength(clampedStrength)
+    }
 }
 
 fun globalEqAllowed(): Boolean {

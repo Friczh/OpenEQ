@@ -46,6 +46,9 @@ class MainActivityViewModel(application: Application) : AndroidViewModel(applica
 
     // State of the sliders (and so EQ levels)
     var eqLevels = List(eqFrequencyBands.size) { 0f }.toMutableStateList()
+
+    // Bass boost strength, 0-1000 (ported from ArchiveTune)
+    var bassBoostStrength by mutableStateOf(0)
 }
 
 class MainActivity : ComponentActivity() {
@@ -80,6 +83,16 @@ class MainActivity : ComponentActivity() {
 
                     frequencyBands = myViewModel.eqFrequencyBandsStr,
                     eqRange = myViewModel.eqRange,
+
+                    bassBoostStrength = myViewModel.bassBoostStrength,
+                    updateBassBoost = { value: Int ->
+                        myViewModel.bassBoostStrength = value
+                        foregroundServiceHandler.updateBassBoost(value.toShort())
+                        appSettings.appSaveInt(
+                            getString(R.string.shared_preferences_bass_boost_key),
+                            value
+                        )
+                    },
 
                     onPresetUpdate = { presetId ->
                         RoomDatabaseHandler.updatePreset(presetId, myViewModel.eqLevels, lifecycleScope)
@@ -137,12 +150,17 @@ class MainActivity : ComponentActivity() {
             getString(R.string.shared_preferences_global_mix_key),
             false
         )
+        myViewModel.bassBoostStrength = appSettings.getAppSettingInt(
+            getString(R.string.shared_preferences_bass_boost_key),
+            0
+        )
 
         // Re-binds to the foreground service if it was left running upon last app destruction
         foregroundServiceHandler.findMediaListenService(
             { myViewModel.eqEnabled = true },
             myViewModel.eqLevels,
-            myViewModel.tryGlobalAudio
+            myViewModel.tryGlobalAudio,
+            myViewModel.bassBoostStrength.toShort()
         )
     }
 
@@ -177,7 +195,8 @@ class MainActivity : ComponentActivity() {
             val started = foregroundServiceHandler.startMediaListenService(
                 this,
                 myViewModel.eqLevels,
-                myViewModel.tryGlobalAudio
+                myViewModel.tryGlobalAudio,
+                myViewModel.bassBoostStrength.toShort()
             )
 
             myViewModel.eqEnabled = started

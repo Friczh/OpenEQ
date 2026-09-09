@@ -19,6 +19,7 @@ class ForegroundServiceHandler(context: Context) {
 
     private var latestEqLevels: MutableList<Float> = mutableListOf()
     private var latestGlobalAudio: Boolean = false
+    private var latestBassBoost: Short = 0
 
     // Class to bind to the foreground service
     private var eqService: EqForegroundService? = null
@@ -31,6 +32,7 @@ class ForegroundServiceHandler(context: Context) {
             // Passing required data to service
             eqService?.updateEqLevels(latestEqLevels)
             eqService?.updateTryGlobalAudio(latestGlobalAudio)
+            eqService?.updateBassBoost(latestBassBoost)
         }
 
         override fun onServiceDisconnected(name: ComponentName?) {
@@ -52,15 +54,24 @@ class ForegroundServiceHandler(context: Context) {
         eqService?.updateTryGlobalAudio(latestGlobalAudio)
     }
 
+    fun updateBassBoost(
+        bassBoost: Short
+    ) {
+        latestBassBoost = bassBoost
+        eqService?.updateBassBoost(latestBassBoost)
+    }
+
     fun findMediaListenService(
         onEqEnabled: () -> Unit,
         eqLevels: MutableList<Float>,
-        globalAudio: Boolean
+        globalAudio: Boolean,
+        bassBoost: Short = 0
     ) {
         // Checks to see if the foreground service is running; if so it re-binds to it
         if (EqForegroundService.isRunning) {
             latestEqLevels = eqLevels
             latestGlobalAudio = globalAudio
+            latestBassBoost = bassBoost
 
             // Binds to the service so new EQ levels can be passed in when the user sets them, updates app state
             myContext.bindService(foregroundServiceIntent, connection, BIND_AUTO_CREATE)
@@ -71,7 +82,8 @@ class ForegroundServiceHandler(context: Context) {
     fun startMediaListenService(
         activity: Activity,
         eqLevels: MutableList<Float>,
-        globalAudio: Boolean
+        globalAudio: Boolean,
+        bassBoost: Short = 0
     ): Boolean {
         // Checking for and requesting notification permission if not already given
         val permissionGranted = checkNotificationPermission(activity)
@@ -82,6 +94,7 @@ class ForegroundServiceHandler(context: Context) {
 
         latestEqLevels = eqLevels
         latestGlobalAudio = globalAudio
+        latestBassBoost = bassBoost
 
         // Starting the foreground service that listens for media streams starting
         myContext.startForegroundService(foregroundServiceIntent)
