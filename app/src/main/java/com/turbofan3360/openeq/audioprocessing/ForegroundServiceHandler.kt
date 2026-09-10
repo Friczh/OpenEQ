@@ -79,8 +79,7 @@ class ForegroundServiceHandler(context: Context) {
             latestBassBoost = bassBoost
 
             // Binds to the service so new EQ levels can be passed in when the user sets them, updates app state
-            myContext.bindService(foregroundServiceIntent, connection, BIND_AUTO_CREATE)
-            isBound = true
+            isBound = myContext.bindService(foregroundServiceIntent, connection, BIND_AUTO_CREATE)
             onEqEnabled()
         }
     }
@@ -105,8 +104,7 @@ class ForegroundServiceHandler(context: Context) {
         // Starting the foreground service that listens for media streams starting
         myContext.startForegroundService(foregroundServiceIntent)
         // Binds to the service so new EQ levels can be passed in when the user sets them
-        myContext.bindService(foregroundServiceIntent, connection, BIND_AUTO_CREATE)
-        isBound = true
+        isBound = myContext.bindService(foregroundServiceIntent, connection, BIND_AUTO_CREATE)
 
         return true
     }

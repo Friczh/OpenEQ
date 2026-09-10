@@ -55,12 +55,12 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionOnScreen
 import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.times
 import com.turbofan3360.openeq.R
@@ -171,10 +171,13 @@ fun MainScreen(
                     // Grabbing scope (i.e. box size) parameters
                     val scope = this
 
-                    val topPadding = with(LocalDensity.current) { innerPadding.calculateTopPadding().toPx() }
-                    val sidePadding = with(LocalDensity.current) {
-                        innerPadding.calculateLeftPadding(LayoutDirection.Ltr).toPx()
-                    }
+                    // Absolute on-screen position of this box's own top-left corner. Used to
+                    // translate thumbPositions (also captured in on-screen coordinates, see
+                    // VerticalSlider) into coordinates local to this Canvas. Deriving this from
+                    // the box's actual measured position - rather than from Scaffold's
+                    // innerPadding - means it stays correct regardless of what's placed above
+                    // it (e.g. the TabRow), instead of drifting out of sync with it.
+                    var boxOrigin by remember { mutableStateOf(Offset.Zero) }
 
                     EQSliders(
                         listOf(scope.maxWidth, scope.maxHeight),
@@ -183,11 +186,14 @@ fun MainScreen(
                         eqRange,
                         eqLevels,
                         updateEqLevel,
-                        thumbPositions
+                        thumbPositions,
+                        modifier = Modifier.onGloballyPositioned { coordinates ->
+                            boxOrigin = coordinates.positionOnScreen()
+                        }
                     )
 
                     // Drawing the curve on top of the EQ sliders
-                    EQCurve(MaterialTheme.colorScheme.primary, thumbPositions, topPadding, sidePadding)
+                    EQCurve(MaterialTheme.colorScheme.primary, thumbPositions, boxOrigin.y, boxOrigin.x)
                 }
 
                 1 -> BassBoostTab(bassBoostStrength, updateBassBoost)
@@ -237,7 +243,8 @@ private fun EQSliders(
     eqRange: List<Float>,
     eqLevels: List<Float>,
     updateEqLevel: (Int, Float) -> Unit,
-    thumbPositions: MutableList<Offset>
+    thumbPositions: MutableList<Offset>,
+    modifier: Modifier = Modifier
 ) {
     // Simple scaling of sliders and spacers to adapt to the screen size
     // Changes scaling depending on screen orientation
@@ -251,11 +258,13 @@ private fun EQSliders(
 
     Row(
         // Tweaks width of sliders depending on screen orientation
-        modifier = if (isPortrait) {
-            Modifier.fillMaxWidth()
-        } else {
-            Modifier.width(LANDSCAPE_SLIDERS_WIDTH_SCALAR * boxSize[0])
-        },
+        modifier = (
+            if (isPortrait) {
+                Modifier.fillMaxWidth()
+            } else {
+                Modifier.width(LANDSCAPE_SLIDERS_WIDTH_SCALAR * boxSize[0])
+            }
+        ).then(modifier),
 
         // Evenly spacing the EQ sliders across the screen
         horizontalArrangement = Arrangement.SpaceAround

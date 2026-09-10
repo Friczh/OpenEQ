@@ -11,7 +11,6 @@ import android.content.IntentFilter
 import android.media.audiofx.AudioEffect
 import android.media.audiofx.BassBoost
 import android.media.audiofx.Equalizer
-import android.media.audiofx.LoudnessEnhancer
 import android.os.Binder
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
@@ -45,9 +44,6 @@ class EqForegroundService : Service() {
     private val mediaStreamStartListener = MediaStreamStartReceiver()
     private val mediaStreamStopListener = MediaStreamStopReceiver()
     private var eqObjects = mutableMapOf<Int, Equalizer>()
-    // Loudness makeup gain, attached alongside every Equalizer to compensate for the
-    // headroom the platform reserves when an EQ effect is attached to a session
-    private var loudnessObjects = mutableMapOf<Int, LoudnessEnhancer>()
     // Bass boost effect, attached alongside every Equalizer
     private var bassBoostObjects = mutableMapOf<Int, BassBoost>()
     private var eqLevels = mutableListOf<Float>()
@@ -108,16 +104,11 @@ class EqForegroundService : Service() {
         // Unregistering the broadcast receivers
         this.unregisterReceiver(mediaStreamStartListener)
         this.unregisterReceiver(mediaStreamStopListener)
-        // Releasing all EQ, loudness compensation and bass boost objects
+        // Releasing all EQ and bass boost objects
         for ((_, eqObj) in eqObjects) {
             delEqualizer(eqObj)
         }
         eqObjects.clear()
-
-        for ((_, loudnessObj) in loudnessObjects) {
-            delLoudnessCompensation(loudnessObj)
-        }
-        loudnessObjects.clear()
 
         for ((_, bassBoostObj) in bassBoostObjects) {
             delBassBoost(bassBoostObj)
@@ -175,10 +166,6 @@ class EqForegroundService : Service() {
                 delEqualizer(eqObj)
             }
             eqObjects.clear()
-            for ((_, loudnessObj) in loudnessObjects) {
-                delLoudnessCompensation(loudnessObj)
-            }
-            loudnessObjects.clear()
             for ((_, bassBoostObj) in bassBoostObjects) {
                 delBassBoost(bassBoostObj)
             }
@@ -191,20 +178,16 @@ class EqForegroundService : Service() {
         // If global mix disabled AND global mix effect objects exist - release & remove them
         else if (eqObjects.containsKey(0)) {
             delEqualizer(eqObjects.remove(0)!!)
-            loudnessObjects.remove(0)?.let { delLoudnessCompensation(it) }
             bassBoostObjects.remove(0)?.let { delBassBoost(it) }
         }
     }
 
-    // Attaches an Equalizer, loudness makeup gain and bass boost to the given session,
-    // and applies the current EQ levels / bass boost strength to them
+    // Attaches an Equalizer and bass boost to the given session, and applies the
+    // current EQ levels / bass boost strength to them
     private fun attachEffectsToSession(sessionId: Int) {
         val eqObj = addEqualizer(sessionId)
         setEqualizer(eqObj, eqLevels)
         eqObjects[sessionId] = eqObj
-
-        // Compensates for the volume drop the platform introduces once an Equalizer is attached
-        loudnessObjects[sessionId] = addLoudnessCompensation(sessionId)
 
         val bassBoostObj = addBassBoost(sessionId)
         setBassBoost(bassBoostObj, bassBoostStrength)
@@ -306,7 +289,6 @@ class EqForegroundService : Service() {
             // Gets the EQ object attached to the given media stream, closes the EQ, and removes it from the map
             if (mediaStreamID != null && mediaStreamID != 0) {
                 eqObjects.remove(mediaStreamID)?.let { delEqualizer(it) }
-                loudnessObjects.remove(mediaStreamID)?.let { delLoudnessCompensation(it) }
                 bassBoostObjects.remove(mediaStreamID)?.let { delBassBoost(it) }
             }
         }

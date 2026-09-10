@@ -4,20 +4,12 @@ import android.content.Context
 import android.media.AudioManager
 import android.media.audiofx.BassBoost
 import android.media.audiofx.Equalizer
-import android.media.audiofx.LoudnessEnhancer
 import kotlin.math.min
 import kotlin.math.round
 
 private const val DECIBEL_TO_MILLIBEL = 100f
 private const val HERZ_TO_MILLIHERZ = 1000f
 private const val ONE_MEGAHERZ = 1000 // in Hz
-
-// Some devices' audio effects framework reserves headroom (roughly -3dB, i.e. ~30% of
-// perceived volume) as soon as an Equalizer effect is instantiated on a session/mix -
-// even if every band is left at 0dB. A LoudnessEnhancer with a fixed makeup gain applied
-// alongside the Equalizer compensates for that loss so enabling the EQ doesn't quietly
-// turn the volume down. See EqForegroundService for where this is used.
-const val EQ_MAKEUP_GAIN_MILLIBEL = 300 // +3dB
 
 // A series of utility functions to help the code manage equalizer instances
 
@@ -98,29 +90,16 @@ fun eqFrequenciesToLabels(
 }
 
 // ---------------------------------------------------------
-// Loudness compensation - fixes the volume drop caused by
-// attaching an Equalizer effect to a session (see comment above)
-// ---------------------------------------------------------
-
-fun addLoudnessCompensation(audioSession: Int): LoudnessEnhancer {
-    // Adds a makeup-gain LoudnessEnhancer to a session to counteract the headroom the
-    // Equalizer effect reserves on that session
-    val loudnessObject = LoudnessEnhancer(audioSession)
-    loudnessObject.setTargetGain(EQ_MAKEUP_GAIN_MILLIBEL)
-    loudnessObject.setEnabled(true)
-
-    return loudnessObject
-}
-
-fun delLoudnessCompensation(loudness: LoudnessEnhancer) {
-    loudness.release()
-}
-
-// ---------------------------------------------------------
 // Bass boost - ported from ArchiveTune's equalizer module
 // (moe.rukamori.archivetune.playback.MusicService), which wraps
 // the platform's android.media.audiofx.BassBoost effect.
 // Strength is 0-1000 as defined by the Android AudioEffect API.
+//
+// Note: on many devices the platform's BassBoost DSP applies its own automatic gain
+// reduction as strength increases, to leave headroom for the boosted low end and avoid
+// clipping. If it sounds like turning the strength up mostly makes things quieter rather
+// than bassier, that trade-off is happening inside the vendor audio HAL/DSP itself - it
+// isn't something this app's wiring controls or can override.
 // ---------------------------------------------------------
 
 const val BASS_BOOST_MIN_STRENGTH: Short = 0
