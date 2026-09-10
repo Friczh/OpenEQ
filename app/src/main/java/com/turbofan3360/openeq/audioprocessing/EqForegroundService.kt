@@ -19,9 +19,21 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import com.turbofan3360.openeq.MainActivity
 import com.turbofan3360.openeq.R
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 private const val PERMANENT_NOTIFICATION_ID = 1
 private const val NOTIFICATION_CHANNEL_ID = "eq_service_channel"
+// How long to wait after the last slider movement before actually writing to the
+// AudioEffect objects. Each setBandLevel() call is a blocking cross-process Binder
+// call into audioserver - without this, dragging a slider fires dozens of those
+// per second and jank follows since they were previously run on the calling (UI) thread.
+private const val EQ_APPLY_DEBOUNCE_MS = 40L
 
 // Foreground service that listens for media streams starting and then attaches equalizers to them
 class EqForegroundService : Service() {
@@ -42,6 +54,11 @@ class EqForegroundService : Service() {
     private var bassBoostStrength: Short = 0
     private var tryGlobalMix = false
     private var binder = LocalBinder()
+
+    // Background scope + debounce job for applying AudioEffect changes off the main thread
+    private val effectsScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private var pendingEqApplyJob: Job? = null
+    private var pendingBassBoostApplyJob: Job? = null
 
     // ---------------------------------
     // Handles binding to this service
@@ -83,6 +100,9 @@ class EqForegroundService : Service() {
 
     override fun onDestroy() {
         // Tidies up everything when stopping the foreground service
+        // Cancelling any pending debounced effect writes and the scope that runs them
+        effectsScope.cancel()
+
         // Deletes notification
         NotificationManagerCompat.from(this).cancel(PERMANENT_NOTIFICATION_ID)
         // Unregistering the broadcast receivers
@@ -114,9 +134,17 @@ class EqForegroundService : Service() {
     ) {
         eqLevels = newEqLevels
 
-        // Setting all EQ instances to the new levels
-        for ((_, eqObj) in eqObjects) {
-            setEqualizer(eqObj, eqLevels)
+        // Cancelling any not-yet-applied update so a fast drag only results in one
+        // (the latest) write to the AudioEffect objects, instead of one per pixel moved
+        pendingEqApplyJob?.cancel()
+        pendingEqApplyJob = effectsScope.launch {
+            delay(EQ_APPLY_DEBOUNCE_MS)
+
+            // Setting all EQ instances to the new levels - off the main thread, since
+            // each setBandLevel() call is a blocking Binder call into audioserver
+            for ((_, eqObj) in eqObjects) {
+                setEqualizer(eqObj, eqLevels)
+            }
         }
     }
 
@@ -125,9 +153,14 @@ class EqForegroundService : Service() {
     fun updateBassBoost(newStrength: Short) {
         bassBoostStrength = newStrength
 
-        // Applying the new strength to every currently-attached bass boost instance
-        for ((_, bassBoostObj) in bassBoostObjects) {
-            setBassBoost(bassBoostObj, bassBoostStrength)
+        pendingBassBoostApplyJob?.cancel()
+        pendingBassBoostApplyJob = effectsScope.launch {
+            delay(EQ_APPLY_DEBOUNCE_MS)
+
+            // Applying the new strength to every currently-attached bass boost instance
+            for ((_, bassBoostObj) in bassBoostObjects) {
+                setBassBoost(bassBoostObj, bassBoostStrength)
+            }
         }
     }
 

@@ -23,6 +23,10 @@ class ForegroundServiceHandler(context: Context) {
 
     // Class to bind to the foreground service
     private var eqService: EqForegroundService? = null
+    // Tracks whether bindService() has actually been called without a matching unbindService()
+    // yet - eqService itself isn't reliable for this since it's set/cleared asynchronously
+    // by the connection callbacks, independent of whether we're still bound.
+    private var isBound = false
     private val connection = object : ServiceConnection {
         // FUNCTION EXECUTES ASYNCHRONOUSLY
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
@@ -37,6 +41,7 @@ class ForegroundServiceHandler(context: Context) {
 
         override fun onServiceDisconnected(name: ComponentName?) {
             eqService = null
+            isBound = false
         }
     }
 
@@ -75,6 +80,7 @@ class ForegroundServiceHandler(context: Context) {
 
             // Binds to the service so new EQ levels can be passed in when the user sets them, updates app state
             myContext.bindService(foregroundServiceIntent, connection, BIND_AUTO_CREATE)
+            isBound = true
             onEqEnabled()
         }
     }
@@ -100,21 +106,33 @@ class ForegroundServiceHandler(context: Context) {
         myContext.startForegroundService(foregroundServiceIntent)
         // Binds to the service so new EQ levels can be passed in when the user sets them
         myContext.bindService(foregroundServiceIntent, connection, BIND_AUTO_CREATE)
+        isBound = true
 
         return true
     }
 
     fun stopMediaListenService() {
         // Unbinds from foreground service
-        myContext.unbindService(connection)
+        unbindForegroundService()
         // Stops the foreground service that listens for media streams starting
         myContext.stopService(foregroundServiceIntent)
     }
 
     fun unbindForegroundService() {
-        // Unbinds from foreground service if it's been bound
-        if (eqService != null) {
+        // Only unbind if we actually have an active bindService() call outstanding -
+        // calling unbindService() twice (or when never bound) throws IllegalArgumentException
+        if (!isBound) {
+            return
+        }
+
+        try {
             myContext.unbindService(connection)
+        } catch (_: IllegalArgumentException) {
+            // Defensive: service connection was already torn down (e.g. by the system
+            // killing the service process) - nothing left to unbind.
+        } finally {
+            isBound = false
+            eqService = null
         }
     }
 
